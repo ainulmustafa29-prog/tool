@@ -1,0 +1,149 @@
+<header class="navbar navbar-expand-lg navbar-light bg-light sticky-top shadow-sm" id="mainHeader">
+    <div class="container">
+        <a class="navbar-brand d-flex align-items-center" href="index.html">
+            <img src="https://flexible-jade-j2fhsqcxkf.edgeone.app/icon.png" alt="AIVOROPRO Logo" class="me-2" style="width: 40px; height: 40px;">
+            <span class="fw-bold fs-4" style="color: #03045e;">AIVOROPRO</span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center">
+                <li class="nav-item">
+                    <a class="nav-link" href="index.html">Home</a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="toolsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Tools
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="toolsDropdown">
+                        <li><a class="dropdown-item" href="index.html#ai-image-tools">AI Image Tools</a></li>
+                        <li><a class="dropdown-item" href="index.html#image-converter-tools">Image Converter</a></li>
+                        <li><a class="dropdown-item" href="index.html#vector-converter-tools">Vector Converter</a></li>
+                        <li><a class="dropdown-item" href="index.html#ai-video-tools">AI Video Tools</a></li>
+                        <li><a class="dropdown-item" href="index.html#video-converter-tools">Video Converter</a></li>
+                        <li><a class="dropdown-item" href="index.html#audio-converter-tools">Audio Converter</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="blogDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Blog
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="blogDropdown">
+                        <li><a class="dropdown-item" href="blog-ai-image-tools.html">AI Image Tools Guide</a></li>
+                        <li><a class="dropdown-item" href="blog-image-conversion.html">Image Conversion Tips</a></li>
+                        <li><a class="dropdown-item" href="blog-vector-graphics.html">Vector Graphics Explained</a></li>
+                        <li><a class="dropdown-item" href="blog-video-editing.html">Video Editing Basics</a></li>
+                        <li><a class="dropdown-item" href="blog-audio-processing.html">Audio Processing Guide</a></li>
+                        <li><a class="dropdown-item" href="blog-seo-optimization.html">SEO Optimization Tips</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="faq.html">FAQ</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="about.html">About</a>
+                </li>
+                <li class="nav-item" id="authButtons">
+                    <button class="btn btn-outline-primary me-2" id="signInBtn" data-bs-toggle="modal" data-bs-target="#signInModal">
+                        <i class="fas fa-sign-in-alt me-1"></i> Sign In
+                    </button>
+                    <button class="btn btn-primary" id="signUpBtn" data-bs-toggle="modal" data-bs-target="#signUpModal">
+                        <i class="fas fa-user-plus me-1"></i> Sign Up
+                    </button>
+                </li>
+                <li class="nav-item d-none" id="userProfile">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-primary dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle me-1"></i> <span id="userEmailDisplay"></span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="#" id="profileLink"><i class="fas fa-user me-2"></i>Profile</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="signOutBtn"><i class="fas fa-sign-out-alt me-2"></i>Sign Out</a></li>
+                        </ul>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <button class="btn btn-outline-primary ms-2" id="darkModeToggle" title="Toggle Dark Mode">
+                        <span id="darkModeIcon">🌙</span>
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+</header>
+
+<!-- Sign In Modal -->
+<div class="modal fade" id="signInModal" tabindex="-1" aria-labelledby="signInModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="signInModalLabel">
+                    <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="signInForm">
+                    <div class="mb-3">
+                        <label for="signInEmail" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="signInEmail" placeholder="Enter your email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="signInPassword" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="signInPassword" placeholder="Enter your password" required>
+                    </div>
+                    <div id="signInError" class="alert alert-danger" role="alert" style="display: none;"></div>
+                    <div id="signInSuccess" class="alert alert-success" role="alert" style="display: none;"></div>
+                    <button type="submit" class="btn btn-primary w-100" id="signInSubmitBtn">
+                        <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                    </button>
+                </form>
+                <div class="text-center mt-3">
+                    <p class="mb-0">Don't have an account? <a href="#" id="switchToSignUp" class="text-primary">Sign Up</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sign Up Modal -->
+<div class="modal fade" id="signUpModal" tabindex="-1" aria-labelledby="signUpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="signUpModalLabel">
+                    <i class="fas fa-user-plus me-2"></i>Create Account
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="signUpForm">
+                    <div class="mb-3">
+                        <label for="signUpName" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="signUpName" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="signUpEmail" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="signUpEmail" placeholder="Enter your email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="signUpPassword" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="signUpPassword" placeholder="Enter password (min. 6 characters)" required minlength="6">
+                        <small class="form-text text-muted">Password must be at least 6 characters long.</small>
+                    </div>
+                    <div id="signUpError" class="alert alert-danger" role="alert" style="display: none;"></div>
+                    <div id="signUpSuccess" class="alert alert-success" role="alert" style="display: none;"></div>
+                    <button type="submit" class="btn btn-primary w-100" id="signUpSubmitBtn">
+                        <i class="fas fa-user-plus me-2"></i>Create Account
+                    </button>
+                </form>
+                <div class="text-center mt-3">
+                    <p class="mb-0">Already have an account? <a href="#" id="switchToSignIn" class="text-primary">Sign In</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

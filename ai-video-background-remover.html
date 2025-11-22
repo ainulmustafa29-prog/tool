@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Free AI Video Background Remover - Remove backgrounds from videos using AI technology.">
+    <link rel="icon" type="image/png" href="https://flexible-jade-j2fhsqcxkf.edgeone.app/icon.png">
+    <title>AI Video Background Remover - Free Online Tool | AIVOROPRO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="header-placeholder"></div>
+    <div class="tool-container">
+        <div class="tool-header">
+            <h1>AI Video Background Remover</h1>
+            <p>Remove backgrounds from videos using AI technology.</p>
+        </div>
+        <div class="upload-area" id="uploadArea">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Drag and drop your video here</p>
+            <span>or click to browse</span>
+        </div>
+        <div class="file-display-container">
+            <div class="file-display-box">
+                <h3>Original Video</h3>
+                <div class="file-preview" id="originalPreview">
+                    <div class="file-preview-placeholder"><i class="fas fa-video"></i><p>Original video will appear here</p></div>
+                </div>
+            </div>
+            <div class="file-display-box">
+                <h3>Background Removed</h3>
+                <div class="file-preview" id="processedPreview">
+                    <div class="file-preview-placeholder"><i class="fas fa-video"></i><p>Processed video will appear here</p></div>
+                </div>
+            </div>
+        </div>
+        <div class="text-center mt-4">
+            <button class="btn btn-primary" id="processBtn" disabled onclick="if(window.handleProcessButtonClick){window.handleProcessButtonClick();}else{alert('Handler not ready. File: '+(window.currentFile?window.currentFile.name:'none'));}return false;"><i class="fas fa-magic"></i> Remove Background</button>
+            <button class="btn btn-secondary ms-2" id="downloadBtn" disabled onclick="if(window.handleDownloadButtonClick){window.handleDownloadButtonClick();}else{alert('Download handler not ready. Please process the video first.');}return false;"><i class="fas fa-download"></i> Download</button>
+        </div>
+    </div>
+    <div id="footer-placeholder"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Define removeBackgroundFromFrame function FIRST - before handler
+        // This ensures it's available when the handler runs
+        window.removeBackgroundFromFrame = function(imageData) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            
+            // Helper functions
+            const getPixel = (x, y, channel) => {
+                if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+                const idx = (y * width + x) * 4;
+                return data[idx + channel];
+            };
+            
+            const getBrightness = (x, y) => {
+                if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+                const idx = (y * width + x) * 4;
+                return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            };
+            
+            const getSaturation = (x, y) => {
+                if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+                const idx = (y * width + x) * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                return max === 0 ? 0 : (max - min) / max;
+            };
+            
+            const getEdgeStrength = (x, y) => {
+                if (x < 1 || x >= width - 1 || y < 1 || y >= height - 1) return 0;
+                
+                const gx = 
+                    -1 * getBrightness(x - 1, y - 1) + 1 * getBrightness(x + 1, y - 1) +
+                    -2 * getBrightness(x - 1, y)     + 2 * getBrightness(x + 1, y) +
+                    -1 * getBrightness(x - 1, y + 1) + 1 * getBrightness(x + 1, y + 1);
+                    
+                const gy = 
+                    -1 * getBrightness(x - 1, y - 1) - 2 * getBrightness(x, y - 1) - 1 * getBrightness(x + 1, y - 1) +
+                     1 * getBrightness(x - 1, y + 1) + 2 * getBrightness(x, y + 1) + 1 * getBrightness(x + 1, y + 1);
+                
+                return Math.sqrt(gx * gx + gy * gy);
+            };
+            
+            // Analyze image to detect background color (sample corners, edges, and border regions)
+            const samplePoints = [];
+            const sampleSize = Math.min(30, Math.floor(width / 8), Math.floor(height / 8));
+            
+            // Sample corners more extensively
+            for (let i = 0; i < sampleSize; i++) {
+                for (let j = 0; j < sampleSize; j++) {
+                    samplePoints.push({x: i, y: j});
+                    samplePoints.push({x: width - 1 - i, y: j});
+                    samplePoints.push({x: i, y: height - 1 - j});
+                    samplePoints.push({x: width - 1 - i, y: height - 1 - j});
+                }
+            }
+            
+            // Sample border regions (top, bottom, left, right edges)
+            const borderWidth = Math.min(15, Math.floor(width / 20), Math.floor(height / 20));
+            for (let i = 0; i < width; i += 5) {
+                for (let j = 0; j < borderWidth; j++) {
+                    samplePoints.push({x: i, y: j});
+                    samplePoints.push({x: i, y: height - 1 - j});
+                }
+            }
+            for (let i = 0; i < height; i += 5) {
+                for (let j = 0; j < borderWidth; j++) {
+                    samplePoints.push({x: j, y: i});
+                    samplePoints.push({x: width - 1 - j, y: i});
+                }
+            }
+            
+            // Calculate average background color from samples
+            let avgR = 0, avgG = 0, avgB = 0;
+            let sampleCount = 0;
+            for (const point of samplePoints) {
+                if (point.x >= 0 && point.x < width && point.y >= 0 && point.y < height) {
+                    const idx = (point.y * width + point.x) * 4;
+                    avgR += data[idx];
+                    avgG += data[idx + 1];
+                    avgB += data[idx + 2];
+                    sampleCount++;
+                }
+            }
+            avgR /= sampleCount;
+            avgG /= sampleCount;
+            avgB /= sampleCount;
+            
+            // Calculate standard deviation to better understand background variation
+            let varianceR = 0, varianceG = 0, varianceB = 0;
+            for (const point of samplePoints) {
+                if (point.x >= 0 && point.x < width && point.y >= 0 && point.y < height) {
+                    const idx = (point.y * width + point.x) * 4;
+                    varianceR += Math.pow(data[idx] - avgR, 2);
+                    varianceG += Math.pow(data[idx + 1] - avgG, 2);
+                    varianceB += Math.pow(data[idx + 2] - avgB, 2);
+                }
+            }
+            const stdDev = Math.sqrt((varianceR + varianceG + varianceB) / (sampleCount * 3));
+            
+            // Create alpha map with improved background detection
+            const alphaMap = new Float32Array(width * height);
+            
+            // Detect if background is light or dark
+            const isLightBg = avgR + avgG + avgB > 382.5; // Average brightness > 150
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+                    const pixelIdx = idx * 4;
+                    const r = data[pixelIdx];
+                    const g = data[pixelIdx + 1];
+                    const b = data[pixelIdx + 2];
+                    
+                    const brightness = (r + g + b) / 3;
+                    const saturation = getSaturation(x, y);
+                    const edgeStrength = getEdgeStrength(x, y);
+                    
+                    // Calculate distance from background color
+                    const colorDist = Math.sqrt(
+                        Math.pow(r - avgR, 2) + 
+                        Math.pow(g - avgG, 2) + 
+                        Math.pow(b - avgB, 2)
+                    ) / 441.67; // Normalize to 0-1
+                    
+                    // Determine background probability (0 = background, 1 = foreground)
+                    let foregroundProb = 1.0;
+                    let backgroundScore = 0;
+                    
+                    // Primary criteria: Similarity to detected background color (adjusted by std dev)
+                    const threshold1 = Math.min(0.15, 0.08 + stdDev / 100);
+                    const threshold2 = Math.min(0.25, 0.15 + stdDev / 80);
+                    const isVerySimilarToBg = colorDist < threshold1;
+                    const isSimilarToBg = colorDist < threshold2;
+                    
+                    // Secondary criteria: Background characteristics
+                    const isLowEdge = edgeStrength < 50;
+                    const isVeryLowEdge = edgeStrength < 30;
+                    const isLowSaturation = saturation < 0.4;
+                    const isVeryLowSaturation = saturation < 0.25;
+                    
+                    // Light background detection
+                    if (isLightBg) {
+                        const isLight = brightness > 170;
+                        const isVeryLight = brightness > 210;
+                        
+                        if (isVerySimilarToBg && isLowEdge) {
+                            backgroundScore = 0.95; // Very likely background
+                        } else if (isSimilarToBg && isLowEdge && isLowSaturation) {
+                            backgroundScore = 0.85;
+                        } else if (isVeryLight && isVeryLowSaturation && isVeryLowEdge) {
+                            backgroundScore = 0.9;
+                        } else if (isLight && isLowSaturation && isLowEdge) {
+                            const brightnessFactor = Math.min(1, (brightness - 170) / 80);
+                            const satFactor = Math.min(1, saturation / 0.4);
+                            const edgeFactor = Math.min(1, edgeStrength / 50);
+                            backgroundScore = brightnessFactor * (1 - satFactor) * (1 - edgeFactor) * 0.75;
+                        }
+                        
+                        // If color is very close to background average, it's likely background
+                        if (isVerySimilarToBg) {
+                            backgroundScore = Math.max(backgroundScore, 0.9);
+                        } else if (isSimilarToBg && brightness > 180) {
+                            backgroundScore = Math.max(backgroundScore, 0.75);
+                        }
+                    } 
+                    // Dark background detection
+                    else {
+                        const isDark = brightness < 100;
+                        const isVeryDark = brightness < 60;
+                        
+                        if (isVerySimilarToBg && isLowEdge) {
+                            backgroundScore = 0.95;
+                        } else if (isSimilarToBg && isLowEdge && isLowSaturation) {
+                            backgroundScore = 0.85;
+                        } else if (isVeryDark && isVeryLowEdge) {
+                            backgroundScore = 0.9;
+                        } else if (isDark && isLowEdge) {
+                            const darknessFactor = Math.min(1, (100 - brightness) / 50);
+                            const edgeFactor = Math.min(1, edgeStrength / 50);
+                            backgroundScore = darknessFactor * (1 - edgeFactor) * 0.75;
+                        }
+                        
+                        if (isVerySimilarToBg) {
+                            backgroundScore = Math.max(backgroundScore, 0.9);
+                        } else if (isSimilarToBg && brightness < 120) {
+                            backgroundScore = Math.max(backgroundScore, 0.75);
+                        }
+                    }
+                    
+                    // Strong edges indicate foreground objects - preserve them
+                    if (edgeStrength > 70) {
+                        foregroundProb = Math.max(0.9, 1 - backgroundScore * 0.3);
+                    } else if (edgeStrength > 50) {
+                        foregroundProb = Math.max(0.7, 1 - backgroundScore * 0.5);
+                    } else {
+                        foregroundProb = Math.max(0, 1 - backgroundScore);
+                    }
+                    
+                    // If pixel is very similar to background and has no edges, make it fully transparent
+                    if (isVerySimilarToBg && isVeryLowEdge && backgroundScore > 0.8) {
+                        foregroundProb = Math.max(0, foregroundProb * 0.2);
+                    }
+                    
+                    // Additional check: if pixel is at border and similar to background, make it transparent
+                    const isAtBorder = (x < borderWidth || x >= width - borderWidth || 
+                                       y < borderWidth || y >= height - borderWidth);
+                    if (isAtBorder && isSimilarToBg && isLowEdge) {
+                        foregroundProb = Math.max(0, foregroundProb * 0.4);
+                    }
+                    
+                    alphaMap[idx] = foregroundProb;
+                }
+            }
+            
+            // Smooth alpha map with Gaussian blur (more passes for cleaner edges)
+            const smoothAlpha = (map, passes = 5) => {
+                const kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1];
+                const kernelSum = 16;
+                
+                for (let pass = 0; pass < passes; pass++) {
+                    const smoothed = new Float32Array(map);
+                    
+                    for (let y = 1; y < height - 1; y++) {
+                        for (let x = 1; x < width - 1; x++) {
+                            let sum = 0;
+                            let k = 0;
+                            
+                            for (let dy = -1; dy <= 1; dy++) {
+                                for (let dx = -1; dx <= 1; dx++) {
+                                    const idx = ((y + dy) * width + (x + dx));
+                                    sum += map[idx] * kernel[k];
+                                    k++;
+                                }
+                            }
+                            
+                            smoothed[y * width + x] = sum / kernelSum;
+                        }
+                    }
+                    
+                    // Copy edges
+                    for (let y = 0; y < height; y++) {
+                        smoothed[y * width] = map[y * width];
+                        smoothed[y * width + width - 1] = map[y * width + width - 1];
+                    }
+                    for (let x = 0; x < width; x++) {
+                        smoothed[x] = map[x];
+                        smoothed[(height - 1) * width + x] = map[(height - 1) * width + x];
+                    }
+                    
+                    for (let i = 0; i < map.length; i++) {
+                        map[i] = smoothed[i];
+                    }
+                }
+            };
+            
+            smoothAlpha(alphaMap, 6);
+            
+            // Post-processing: Clean up small background artifacts and remove background more aggressively
+            const cleanedAlpha = new Float32Array(alphaMap);
+            
+            // First pass: Remove isolated pixels and clean up edges
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = y * width + x;
+                    const center = alphaMap[idx];
+                    
+                    // Count foreground and background neighbors
+                    let foregroundNeighbors = 0;
+                    let backgroundNeighbors = 0;
+                    let totalNeighborAlpha = 0;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const neighborIdx = ((y + dy) * width + (x + dx));
+                            const neighborAlpha = alphaMap[neighborIdx];
+                            totalNeighborAlpha += neighborAlpha;
+                            if (neighborAlpha > 0.5) {
+                                foregroundNeighbors++;
+                            } else {
+                                backgroundNeighbors++;
+                            }
+                        }
+                    }
+                    
+                    const avgNeighborAlpha = totalNeighborAlpha / 8;
+                    
+                    // If center is background but most neighbors are foreground, keep it as foreground (edge preservation)
+                    if (center < 0.3 && foregroundNeighbors >= 6) {
+                        cleanedAlpha[idx] = Math.min(1, center + 0.5);
+                    }
+                    // If center is foreground but most neighbors are background, make it background (remove isolated foreground pixels)
+                    else if (center > 0.5 && backgroundNeighbors >= 6) {
+                        cleanedAlpha[idx] = Math.max(0, center - 0.7);
+                    }
+                    // If center is slightly foreground but surrounded by background, make it fully background
+                    else if (center < 0.5 && backgroundNeighbors >= 5) {
+                        cleanedAlpha[idx] = Math.max(0, center * 0.2);
+                    }
+                    // If center is background and neighbors are also mostly background, make it fully transparent
+                    else if (center < 0.3 && avgNeighborAlpha < 0.3) {
+                        cleanedAlpha[idx] = 0;
+                    }
+                    // If center is background, make it more transparent
+                    else if (center < 0.3) {
+                        cleanedAlpha[idx] = Math.max(0, center * 0.4);
+                    } else {
+                        cleanedAlpha[idx] = center;
+                    }
+                }
+            }
+            
+            // Second pass: Remove any remaining background pixels at edges and corners
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+                    const isAtEdge = (y === 0 || y === height - 1 || x === 0 || x === width - 1);
+                    const isAtCorner = ((y === 0 || y === height - 1) && (x === 0 || x === width - 1));
+                    
+                    // If at corner and low alpha, make it fully transparent
+                    if (isAtCorner && cleanedAlpha[idx] < 0.5) {
+                        cleanedAlpha[idx] = 0;
+                    }
+                    // If at edge and low alpha, make it fully transparent
+                    else if (isAtEdge && cleanedAlpha[idx] < 0.4) {
+                        cleanedAlpha[idx] = 0;
+                    }
+                    // If very close to edge and low alpha, make it more transparent
+                    else if ((y < 3 || y >= height - 3 || x < 3 || x >= width - 3) && cleanedAlpha[idx] < 0.3) {
+                        cleanedAlpha[idx] = Math.max(0, cleanedAlpha[idx] * 0.5);
+                    }
+                }
+            }
+            
+            // Third pass: Final cleanup - remove any remaining low-alpha pixels that are isolated
+            for (let y = 2; y < height - 2; y++) {
+                for (let x = 2; x < width - 2; x++) {
+                    const idx = y * width + x;
+                    if (cleanedAlpha[idx] < 0.2) {
+                        // Check if surrounded by low alpha
+                        let lowAlphaCount = 0;
+                        for (let dy = -2; dy <= 2; dy++) {
+                            for (let dx = -2; dx <= 2; dx++) {
+                                if (dx === 0 && dy === 0) continue;
+                                const neighborIdx = ((y + dy) * width + (x + dx));
+                                if (cleanedAlpha[neighborIdx] < 0.2) lowAlphaCount++;
+                            }
+                        }
+                        // If most neighbors are also low alpha, make it fully transparent
+                        if (lowAlphaCount >= 18) {
+                            cleanedAlpha[idx] = 0;
+                        }
+                    }
+                }
+            }
+            
+            // Final smoothing pass for clean edges
+            smoothAlpha(cleanedAlpha, 3);
+            
+            // Use cleaned alpha map
+            for (let i = 0; i < alphaMap.length; i++) {
+                alphaMap[i] = cleanedAlpha[i];
+            }
+            
+            // Apply alpha values to output - preserve original RGB values exactly
+            const output = new Uint8ClampedArray(data);
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const alphaIdx = y * width + x;
+                    let alpha = Math.floor(255 * alphaMap[alphaIdx]);
+                    
+                    // Sharpen edges and aggressively remove background for clean transparency
+                    // Make background pixels fully transparent
+                    if (alpha < 30) {  // Less than ~12% opacity - make fully transparent
+                        alpha = 0; // Fully transparent
+                    } else if (alpha > 225) {  // More than ~88% opacity - make fully opaque
+                        alpha = 255; // Fully opaque
+                    } else if (alpha < 60) {
+                        // Very low alpha - make it even more transparent for cleaner background
+                        alpha = Math.max(0, Math.floor(alpha * 0.5));
+                    } else {
+                        // For semi-transparent pixels, preserve the calculated alpha
+                        alpha = Math.floor(255 * alphaMap[alphaIdx]);
+                    }
+                    
+                    // Preserve original RGB values exactly - do not modify them
+                    // Only modify the alpha channel
+                    output[idx] = data[idx];         // R - keep original
+                    output[idx + 1] = data[idx + 1]; // G - keep original
+                    output[idx + 2] = data[idx + 2]; // B - keep original
+                    output[idx + 3] = alpha;         // A - set transparency
+                    
+                    // If pixel is fully transparent, set RGB to 0 to avoid black background artifacts
+                    if (alpha === 0) {
+                        output[idx] = 0;     // R
+                        output[idx + 1] = 0; // G
+                        output[idx + 2] = 0; // B
+                    }
+                }
+            }
+            
+            return new ImageData(output, width, height);
+        };
+        
+        console.log('✓ removeBackgroundFromFrame function defined and assigned to window:', typeof window.removeBackgroundFromFrame);
+        
+        // Define process button handler IMMEDIATELY - before anything else
+        window.handleProcessButtonClick = function() {
+            console.log('=== PROCESS BUTTON CLICKED ===');
+            
+            // Get file from all possible sources
+            const fileToProcess = window.currentFile || (typeof currentFile !== 'undefined' ? currentFile : null);
+            console.log('File to process:', fileToProcess);
+            console.log('window.currentFile:', window.currentFile);
+            
+            if (!fileToProcess) {
+                alert('Please upload a video file first.');
+                console.error('No file available');
+                    return;
+                }
+                
+            const btn = document.getElementById('processBtn');
+            if (!btn) {
+                console.error('Process button not found!');
+                return;
+            }
+            
+            if (btn.disabled) {
+                console.error('Button is disabled!');
+                    return;
+                }
+                
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            console.log('Starting video processing...');
+                
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+            video.muted = true;
+            video.playsInline = true;
+            video.crossOrigin = 'anonymous';
+            
+            const videoUrl = URL.createObjectURL(fileToProcess);
+                video.src = videoUrl;
+            console.log('Video URL created:', videoUrl);
+                
+                video.onloadedmetadata = function() {
+                console.log('Video metadata loaded');
+                    video.currentTime = 0;
+                    
+                    video.onloadeddata = function() {
+                    console.log('Video data loaded, starting processing');
+                            const canvas = document.createElement('canvas');
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            const ctx = canvas.getContext('2d');
+                            
+                            // Create preview canvas
+                            const previewCanvas = document.createElement('canvas');
+                            previewCanvas.width = video.videoWidth;
+                            previewCanvas.height = video.videoHeight;
+                            const previewCtx = previewCanvas.getContext('2d');
+                            
+                            // Show preview
+                            const processedPreview = document.getElementById('processedPreview');
+                            processedPreview.classList.add('transparent-bg');
+                            processedPreview.innerHTML = `
+                                <canvas id="bgRemovedPreview" width="${video.videoWidth}" height="${video.videoHeight}" style="max-width: 100%; max-height: 100%; display: block; margin: 0 auto;"></canvas>
+                            `;
+                            
+                            const displayCanvas = document.getElementById('bgRemovedPreview');
+                            const displayCtx = displayCanvas.getContext('2d');
+                            
+                            // Process first frame for preview
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(video, 0, 0);
+                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    // Check if removeBackgroundFromFrame is available - wait for it if needed
+                    function getProcessFunction() {
+                        // Try multiple sources
+                        if (typeof window.removeBackgroundFromFrame === 'function') {
+                            return window.removeBackgroundFromFrame;
+                        }
+                        if (typeof removeBackgroundFromFrame === 'function') {
+                            return removeBackgroundFromFrame;
+                        }
+                        // Check if it exists in the global scope by name
+                        try {
+                            if (typeof eval('removeBackgroundFromFrame') === 'function') {
+                                return eval('removeBackgroundFromFrame');
+                            }
+                        } catch(e) {}
+                        return null;
+                    }
+                    
+                    let processFunction = getProcessFunction();
+                    let retryCount = 0;
+                    const maxRetries = 100; // Wait up to 10 seconds (100 * 100ms)
+                    
+                    function tryProcess() {
+                        processFunction = getProcessFunction();
+                        if (typeof processFunction === 'function') {
+                            console.log('✓ Processing function found, processing frame...');
+                            try {
+                                const processedData = processFunction(imageData);
+                            displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+                            displayCtx.putImageData(processedData, 0, 0);
+                                console.log('✓ First frame processed successfully');
+                            } catch(err) {
+                                console.error('Error processing frame:', err);
+                                alert('Error processing video: ' + err.message);
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-magic"></i> Remove Background';
+                            }
+                        } else if (retryCount < maxRetries) {
+                            retryCount++;
+                            if (retryCount % 10 === 0) { // Log every second
+                                console.log('Waiting for processing function... (' + retryCount + '/' + maxRetries + ')');
+                                console.log('window.removeBackgroundFromFrame:', typeof window.removeBackgroundFromFrame);
+                            }
+                            setTimeout(tryProcess, 100);
+                        } else {
+                            console.error('✗ removeBackgroundFromFrame function not found after waiting!');
+                            console.error('window.removeBackgroundFromFrame:', typeof window.removeBackgroundFromFrame);
+                            console.error('Local removeBackgroundFromFrame:', typeof removeBackgroundFromFrame);
+                            console.error('All window properties:', Object.keys(window).filter(k => k.includes('remove')));
+                            alert('Processing function not loaded. Please refresh the page.');
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-magic"></i> Remove Background';
+                            return;
+                        }
+                    }
+                    
+                    tryProcess();
+                            
+                            // Update preview as video plays
+                            let updateId;
+                            function updatePreview() {
+                                if (video.readyState >= 2) {
+                                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                    ctx.drawImage(video, 0, 0);
+                                    const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            const processFunc = window.removeBackgroundFromFrame || (typeof removeBackgroundFromFrame !== 'undefined' ? removeBackgroundFromFrame : null);
+                            if (typeof processFunc === 'function') {
+                                const processedFrame = processFunc(frameData);
+                                    displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+                                    displayCtx.putImageData(processedFrame, 0, 0);
+                            }
+                                }
+                                updateId = requestAnimationFrame(updatePreview);
+                            }
+                            
+                            video.addEventListener('play', function() {
+                                updatePreview();
+                            });
+                            
+                            video.addEventListener('pause', function() {
+                                if (updateId) cancelAnimationFrame(updateId);
+                            });
+                            
+                            video.addEventListener('seeked', function() {
+                                if (video.readyState >= 2) {
+                                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                    ctx.drawImage(video, 0, 0);
+                                    const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            const processFunc = window.removeBackgroundFromFrame || (typeof removeBackgroundFromFrame !== 'undefined' ? removeBackgroundFromFrame : null);
+                            if (typeof processFunc === 'function') {
+                                const processedFrame = processFunc(frameData);
+                                    displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+                                    displayCtx.putImageData(processedFrame, 0, 0);
+                            }
+                                }
+                            });
+                            
+                            // Store processing data - make it globally accessible
+                            processedVideoData = {
+                                canvas: canvas,
+                                previewCanvas: previewCanvas,
+                                video: video,
+                                file: fileToProcess
+                            };
+                            window.processedVideoData = processedVideoData;
+                            console.log('✓ Processing data stored:', processedVideoData);
+                            
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-magic"></i> Remove Background';
+                    const downloadBtn = document.getElementById('downloadBtn');
+                    if (downloadBtn) {
+                        downloadBtn.disabled = false;
+                    }
+                    };
+                        
+                        video.onerror = function(e) {
+                            console.error('Video load error:', e);
+                            alert('Error loading video. Please make sure the file is a valid video format.');
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-magic"></i> Remove Background';
+                                URL.revokeObjectURL(videoUrl);
+                        };
+                    };
+                    
+                    // Clean up URL when video is done
+                    video.addEventListener('ended', function() {
+                        URL.revokeObjectURL(videoUrl);
+                    }, { once: true });
+        };
+        
+        console.log('✓ Process button handler defined:', typeof window.handleProcessButtonClick);
+        
+        // PREVENT main.js from interfering - run our code FIRST
+        (function() {
+            'use strict';
+            
+            // Wait for DOM to be ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initUpload);
+            } else {
+                initUpload();
+            }
+            
+            function initUpload() {
+                const uploadArea = document.getElementById('uploadArea');
+                if (!uploadArea) {
+                    setTimeout(initUpload, 50);
+                    return;
+                }
+                
+                // Remove ALL existing event listeners by cloning the element
+                const newUploadArea = uploadArea.cloneNode(true);
+                uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
+                newUploadArea.id = 'uploadArea';
+                
+                // Remove any existing file inputs
+                const existingInputs = newUploadArea.querySelectorAll('input[type="file"]');
+                existingInputs.forEach(input => input.remove());
+                
+                // Create file input
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'video/*,.mp4,.webm,.ogg,.mov,.avi,.wmv,.flv,.mkv,.m4v,.3gp';
+                fileInput.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:9999;';
+                fileInput.id = 'videoFileInput';
+                
+                // Ensure upload area has relative positioning
+                if (window.getComputedStyle(newUploadArea).position === 'static') {
+                    newUploadArea.style.position = 'relative';
+                }
+                
+                newUploadArea.appendChild(fileInput);
+                newUploadArea.style.cursor = 'pointer';
+                
+                // File input change handler
+                fileInput.addEventListener('change', function(e) {
+                    if (e.target.files && e.target.files.length > 0) {
+                        handleFileUpload(e.target.files[0]);
+                    }
+                }, false);
+                
+                // Click handler - multiple approaches
+                newUploadArea.addEventListener('click', function(e) {
+                    if (e.target !== fileInput && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        fileInput.click();
+                    }
+                }, true);
+                
+                // Drag and drop handlers
+                let dragCounter = 0;
+                
+                newUploadArea.addEventListener('dragenter', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    dragCounter++;
+                    newUploadArea.classList.add('dragover');
+                }, true);
+                
+                newUploadArea.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    if (e.dataTransfer) {
+                        e.dataTransfer.dropEffect = 'copy';
+                    }
+                    newUploadArea.classList.add('dragover');
+                }, true);
+                
+                newUploadArea.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dragCounter--;
+                    if (dragCounter <= 0) {
+                        dragCounter = 0;
+                        newUploadArea.classList.remove('dragover');
+                    }
+                }, true);
+                
+                newUploadArea.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    dragCounter = 0;
+                    newUploadArea.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files && files.length > 0) {
+                        handleFileUpload(files[0]);
+                    }
+                }, true);
+                
+                // Prevent document-level interference
+                const preventDocumentDrop = function(e) {
+                    if (!newUploadArea.contains(e.target)) {
+                        e.preventDefault();
+                    }
+                };
+                
+                document.addEventListener('dragover', preventDocumentDrop, false);
+                document.addEventListener('drop', preventDocumentDrop, false);
+            }
+            
+            function handleFileUpload(file) {
+                if (!file) return;
+                
+                // Validate
+                const isValid = file.type.startsWith('video/') || 
+                             /\.(mp4|webm|ogg|mov|avi|wmv|flv|mkv|m4v|3gp)$/i.test(file.name);
+                
+                if (!isValid) {
+                    alert('Please upload a video file only.');
+                    return;
+                }
+                
+                // Set current file - make it globally accessible
+                window.currentFile = file;
+                currentFile = file;
+                console.log('✓ File uploaded:', file.name);
+                console.log('✓ currentFile set:', currentFile);
+                console.log('✓ window.currentFile set:', window.currentFile);
+                
+                // Enable process button - ensure it works
+                function enableProcessButton() {
+                    const processBtn = document.getElementById('processBtn');
+                    if (processBtn) {
+                        processBtn.disabled = false;
+                        processBtn.style.pointerEvents = 'auto';
+                        processBtn.style.cursor = 'pointer';
+                        processBtn.style.opacity = '1';
+                        console.log('✓ Process button ENABLED');
+                        console.log('✓ Button disabled state:', processBtn.disabled);
+                        console.log('✓ Button onclick:', typeof processBtn.onclick);
+                        console.log('✓ Window handler available:', typeof window.handleProcessButtonClick);
+                        return true;
+                    }
+                    return false;
+                }
+                
+                // Try to enable immediately
+                if (!enableProcessButton()) {
+                    // Retry multiple times
+                    setTimeout(enableProcessButton, 50);
+                    setTimeout(enableProcessButton, 100);
+                    setTimeout(enableProcessButton, 200);
+                }
+                
+                // Also make button directly callable for testing
+                window.testProcessButton = function() {
+                    console.log('Manual test triggered');
+                    if (window.handleProcessButtonClick) {
+                        window.handleProcessButtonClick();
+                    } else {
+                        alert('Handler not attached. File: ' + (window.currentFile ? window.currentFile.name : 'none'));
+                    }
+                };
+                
+                // Display video
+                const originalPreview = document.getElementById('originalPreview');
+                if (originalPreview) {
+                    const videoUrl = URL.createObjectURL(file);
+                    originalPreview.innerHTML = '<video src="' + videoUrl + '" controls style="max-width:100%;max-height:100%;"></video>';
+                }
+            }
+        })();
+    </script>
+    <script src="main.js"></script>
+    <script>
+        // Use global currentFile - make it truly global
+        var currentFile = null;
+        var processedVideoData = null;
+        
+        // Make sure window.currentFile is accessible
+        if (window.currentFile) {
+            currentFile = window.currentFile;
+        }
+        
+        
+        // Function is already defined in first script block - just ensure it's globally available
+        if (typeof window.removeBackgroundFromFrame !== 'function' && typeof removeBackgroundFromFrame === 'function') {
+            window.removeBackgroundFromFrame = removeBackgroundFromFrame;
+            console.log('✓ removeBackgroundFromFrame assigned to window from local scope');
+        }
+        
+        // If function still doesn't exist, create a placeholder (should not happen)
+        if (typeof window.removeBackgroundFromFrame !== 'function') {
+            console.error('✗ removeBackgroundFromFrame not found! Creating placeholder.');
+            window.removeBackgroundFromFrame = function(imageData) {
+                console.error('Placeholder function called - this should not happen!');
+                return imageData;
+            };
+        }
+        
+        
+        // Function is already defined in first script block - just verify it's available
+        if (typeof window.removeBackgroundFromFrame === 'function') {
+            console.log('✓ removeBackgroundFromFrame confirmed available in window');
+        } else {
+            console.error('✗ removeBackgroundFromFrame NOT found in window!');
+            console.error('Available window properties with "remove":', Object.keys(window).filter(k => k.toLowerCase().includes('remove')));
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update currentFile reference when it's set by the upload handler
+            const checkCurrentFile = setInterval(function() {
+                if (window.currentFile && !currentFile) {
+                    currentFile = window.currentFile;
+                }
+            }, 100);
+            
+            // Stop checking after 5 seconds
+            setTimeout(function() {
+                clearInterval(checkCurrentFile);
+            }, 5000);
+            
+            // Attach process button handler - handler is already defined globally
+            function attachProcessHandler() {
+                const processBtn = document.getElementById('processBtn');
+                if (!processBtn) {
+                    console.log('Process button not found, retrying...');
+                    setTimeout(attachProcessHandler, 100);
+                    return;
+                }
+                
+                console.log('Attaching process button handler...');
+                
+                // Method 1: addEventListener
+                processBtn.addEventListener('click', window.handleProcessButtonClick);
+                
+                // Method 2: onclick (backup) - but inline onclick should already work
+                processBtn.onclick = window.handleProcessButtonClick;
+                
+                console.log('✓ Process button handler attached');
+                console.log('✓ Handler function available:', typeof window.handleProcessButtonClick);
+            }
+            
+            // Attach immediately
+            attachProcessHandler();
+            
+            // Also attach after a delay as backup
+            setTimeout(attachProcessHandler, 200);
+            setTimeout(attachProcessHandler, 500);
+            
+            // Global download handler function
+            window.handleDownloadButtonClick = function() {
+                console.log('=== DOWNLOAD BUTTON CLICKED (GLOBAL HANDLER) ===');
+                
+                const fileToDownload = currentFile || window.currentFile;
+                const videoData = processedVideoData || window.processedVideoData;
+                
+                console.log('File to download:', fileToDownload);
+                console.log('Processed video data:', videoData);
+                console.log('processedVideoData:', processedVideoData);
+                console.log('window.processedVideoData:', window.processedVideoData);
+                
+                if (!videoData || !fileToDownload) {
+                    alert('Please process the video first by clicking "Remove Background".');
+                    console.error('Missing data. processedVideoData:', processedVideoData, 'window.processedVideoData:', window.processedVideoData, 'fileToDownload:', fileToDownload);
+                    return;
+                }
+                
+                const btn = document.getElementById('downloadBtn');
+                if (!btn) {
+                    console.error('Download button not found!');
+                    return;
+                }
+                
+                if (btn.disabled) {
+                    console.log('Button is already disabled');
+                    return;
+                }
+                
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Video...';
+                    
+                const { canvas, video } = videoData;
+                
+                if (!canvas || !video) {
+                    alert('Error: Video processing data is incomplete. Please process the video again.');
+                    console.error('Missing canvas or video. canvas:', canvas, 'video:', video);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                    return;
+                }
+                
+                console.log('Starting video creation...');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Check for supported MIME types - prioritize VP9 for alpha channel support
+                    const mimeTypes = [
+                        'video/webm;codecs=vp9',  // Best for transparency
+                        'video/webm;codecs=vp8',  // Good for transparency
+                        'video/webm',             // Fallback
+                        'video/mp4'                // Last resort (no transparency)
+                    ];
+                    
+                    let selectedMimeType = 'video/webm';
+                    for (const mimeType of mimeTypes) {
+                        if (MediaRecorder.isTypeSupported(mimeType)) {
+                            selectedMimeType = mimeType;
+                            console.log('Selected MIME type:', mimeType);
+                            break;
+                        }
+                    }
+                    
+                    // Ensure canvas context preserves alpha channel
+                    // The canvas should already have alpha from ImageData, but we'll make sure
+                    const fps = 30;
+                    const stream = canvas.captureStream(fps);
+                    
+                    // Use MediaRecorder with proper options
+                    // Note: WebM with VP9/VP8 supports alpha channel for transparency
+                    const recorderOptions = {
+                        mimeType: selectedMimeType,
+                        videoBitsPerSecond: 2500000 // 2.5 Mbps for good quality
+                    };
+                    
+                    // Try to create MediaRecorder with options
+                    let mediaRecorder;
+                    try {
+                        mediaRecorder = new MediaRecorder(stream, recorderOptions);
+                        console.log('MediaRecorder created with:', selectedMimeType);
+                    } catch (e) {
+                        console.warn('Failed to create MediaRecorder with options, trying without:', e);
+                        // Fallback: try without options
+                        try {
+                            mediaRecorder = new MediaRecorder(stream);
+                            console.log('MediaRecorder created without options (using default)');
+                        } catch (e2) {
+                            alert('MediaRecorder is not supported in this browser. Please use a modern browser like Chrome, Firefox, or Edge.');
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                            return;
+                        }
+                    }
+                    
+                    console.log('MediaRecorder state:', mediaRecorder.state);
+                    console.log('MediaRecorder MIME type:', mediaRecorder.mimeType || 'default');
+                    console.log('Canvas has alpha:', ctx.getImageData(0, 0, 1, 1).data[3] !== undefined);
+                    
+                    const chunks = [];
+                    let processInterval = null;
+                    let isRecording = false;
+                    
+                    mediaRecorder.ondataavailable = function(e) {
+                        if (e.data && e.data.size > 0) {
+                            chunks.push(e.data);
+                            console.log('Received video chunk:', e.data.size, 'bytes. Total chunks:', chunks.length);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = function() {
+                        console.log('MediaRecorder stopped. Processing video file...');
+                        console.log('MediaRecorder state:', mediaRecorder.state);
+                        console.log('MediaRecorder MIME type used:', mediaRecorder.mimeType);
+                        console.log('Total chunks received:', chunks.length);
+                        
+                        if (processInterval) {
+                            clearInterval(processInterval);
+                            processInterval = null;
+                        }
+                        
+                        // Wait a bit for any final processing
+                        setTimeout(() => {
+                            const totalSize = chunks.reduce((sum, chunk) => sum + (chunk ? chunk.size : 0), 0);
+                            console.log('Total video data size:', totalSize, 'bytes');
+                            
+                            if (chunks.length === 0 || totalSize === 0) {
+                                alert('Error: No video data was recorded. Please make sure the video plays completely during processing.');
+                                console.error('No chunks available or total size is 0');
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                            return;
+                        }
+                        
+                            // Use the actual MIME type from MediaRecorder if available, otherwise use selected
+                            const actualMimeType = mediaRecorder.mimeType || selectedMimeType;
+                            console.log('Using MIME type:', actualMimeType);
+                            
+                            // Filter out any null/undefined chunks
+                            const validChunks = chunks.filter(chunk => chunk && chunk.size > 0);
+                            console.log('Valid chunks:', validChunks.length);
+                            
+                            if (validChunks.length === 0) {
+                                alert('Error: No valid video data was recorded. Please try again.');
+                                console.error('No valid chunks');
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                                return;
+                            }
+                            
+                            // Verify MIME type is actually a video type
+                            if (!actualMimeType || (!actualMimeType.includes('video/') && !actualMimeType.includes('webm') && !actualMimeType.includes('mp4'))) {
+                                console.error('Invalid MIME type detected:', actualMimeType);
+                                alert('Error: Invalid video format detected. Please try again.');
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                                return;
+                            }
+                            
+                            // Create blob with actual MIME type - MUST be video MIME type
+                            const videoMimeType = actualMimeType.startsWith('video/') ? actualMimeType : 'video/' + actualMimeType.split('/').pop();
+                            const blob = new Blob(validChunks, { type: videoMimeType });
+                            console.log('Blob created:', blob.size, 'bytes, type:', blob.type);
+                            
+                            // Verify blob type is video
+                            if (!blob.type.includes('video/') && !blob.type.includes('webm') && !blob.type.includes('mp4')) {
+                                console.error('ERROR: Blob type is not video! Type:', blob.type);
+                                alert('Error: File type is not video. Please try again.');
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                                return;
+                            }
+                        
+                            if (blob.size === 0) {
+                                alert('Error: Video file is empty. Please try again.');
+                                console.error('Blob size is 0');
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                                return;
+                            }
+                            
+                            // Verify blob is valid - should be at least a few KB for a valid video
+                            if (blob.size < 5000) {
+                                console.warn('Warning: Video file is very small (', blob.size, 'bytes). It might be corrupted or incomplete.');
+                                alert('Warning: The video file is very small and might not play correctly. Please try processing a shorter video or check the console for errors.');
+                            }
+                            
+                            // Determine file extension based on actual MIME type - MUST be video extension
+                            let extension = 'webm'; // Default video extension
+                            if (videoMimeType.includes('mp4') || actualMimeType.includes('mp4')) {
+                                extension = 'mp4';
+                            } else if (videoMimeType.includes('webm') || actualMimeType.includes('webm')) {
+                                extension = 'webm';
+                            }
+                            
+                            // Ensure extension is a video extension, not image
+                            if (extension === 'png' || extension === 'jpg' || extension === 'jpeg' || extension === 'gif') {
+                                console.error('ERROR: File extension is image format! Using webm instead.');
+                                extension = 'webm';
+                            }
+                            
+                            const hasTransparency = (videoMimeType.includes('webm') || actualMimeType.includes('webm')) && (actualMimeType.includes('vp9') || actualMimeType.includes('vp8'));
+                            const fileName = fileToDownload.name.replace(/\.[^/.]+$/, '') + '-bg-removed.' + extension;
+                            
+                            // Verify filename has video extension
+                            if (!fileName.endsWith('.webm') && !fileName.endsWith('.mp4') && !fileName.endsWith('.mov') && !fileName.endsWith('.avi')) {
+                                console.error('ERROR: Filename does not have video extension! Original:', fileName);
+                                const correctedFileName = fileToDownload.name.replace(/\.[^/.]+$/, '') + '-bg-removed.webm';
+                                console.log('Using corrected filename:', correctedFileName);
+                                var finalFileName = correctedFileName;
+                            } else {
+                                var finalFileName = fileName;
+                            }
+                            
+                            // Create download link
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = finalFileName;
+                            
+                            // Verify download attribute is set correctly
+                            console.log('Downloading VIDEO file:', finalFileName);
+                            console.log('File size:', (blob.size / 1024).toFixed(2), 'KB');
+                            console.log('MIME type:', blob.type);
+                            console.log('File extension:', extension);
+                            console.log('Is video MIME type:', blob.type.includes('video/') || blob.type.includes('webm') || blob.type.includes('mp4'));
+                            
+                            // Double-check we're not creating an image file
+                            if (blob.type.includes('image/') || finalFileName.match(/\.(png|jpg|jpeg|gif)$/i)) {
+                                console.error('CRITICAL ERROR: Attempting to download as image file!');
+                                alert('Error: File type mismatch detected. Please refresh the page and try again.');
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                                URL.revokeObjectURL(url);
+                                return;
+                            }
+                            
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        
+                        // Revoke URL after a delay to ensure download starts
+                        setTimeout(() => {
+                            URL.revokeObjectURL(url);
+                            }, 2000);
+                            
+                            // Show success message
+                            const formatInfo = hasTransparency 
+                                ? 'The video has been saved with transparent background (WebM format).' 
+                                : 'The video has been saved. Note: MP4 format does not support transparency.';
+                            console.log('✓ Video download complete:', formatInfo);
+                        
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                        isRecording = false;
+                        }, 500); // Wait 500ms for any final data
+                    };
+                    
+                    mediaRecorder.onerror = function(e) {
+                        console.error('MediaRecorder error:', e);
+                        if (processInterval) {
+                            clearInterval(processInterval);
+                            processInterval = null;
+                        }
+                        alert('Error creating video. Please try again.');
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                        isRecording = false;
+                    };
+                    
+                    // Start recording
+                    try {
+                        // Ensure video is loaded and ready
+                        if (video.readyState < 2) {
+                            video.load();
+                        }
+                        
+                        // Reset video to start
+                        video.currentTime = 0;
+                        video.pause();
+                        
+                        // Wait for video to be ready
+                        const startRecording = () => {
+                            if (video.readyState < 2 || !video.duration || isNaN(video.duration)) {
+                                setTimeout(startRecording, 100);
+                                return;
+                            }
+                            
+                            // Ensure we have valid duration
+                            const videoDuration = video.duration || 10;
+                            const frameTime = 1 / fps; // Time per frame in seconds
+                            
+                            console.log('Starting video processing. Duration:', videoDuration, 'FPS:', fps);
+                            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+                            
+                            isRecording = true;
+                            
+                            // Start MediaRecorder first - use timeslice to get data regularly
+                            try {
+                                // Start with timeslice to ensure we get data chunks regularly
+                                mediaRecorder.start(200); // Request data every 200ms for better reliability
+                                console.log('MediaRecorder started, state:', mediaRecorder.state);
+                                console.log('MediaRecorder MIME type:', mediaRecorder.mimeType);
+                                
+                                // Verify recording started
+                                if (mediaRecorder.state !== 'recording') {
+                                    throw new Error('MediaRecorder did not start recording. State: ' + mediaRecorder.state);
+                                }
+                            } catch (err) {
+                                console.error('Failed to start MediaRecorder:', err);
+                                alert('Failed to start video recording: ' + err.message + '. Please try again or use a different browser.');
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                                return;
+                            }
+                            
+                            // Reset video to start and ensure first frame is ready
+                            video.currentTime = 0;
+                            video.muted = true;
+                            
+                            // Wait for first frame to be ready before starting processing
+                            const waitForFirstFrame = () => {
+                                if (video.readyState >= 2) {
+                                    // Draw first frame to canvas immediately so MediaRecorder has something to capture
+                                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                    ctx.drawImage(video, 0, 0);
+                                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                    const processFunc = window.removeBackgroundFromFrame || (typeof removeBackgroundFromFrame !== 'undefined' ? removeBackgroundFromFrame : null);
+                                    if (typeof processFunc === 'function') {
+                                        const processed = processFunc(imageData);
+                                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                        ctx.putImageData(processed, 0, 0);
+                                        
+                                        // Verify first frame was processed correctly
+                                        const processedData = processed.data;
+                                        let transparentCount = 0;
+                                        for (let i = 3; i < processedData.length; i += 4) {
+                                            if (processedData[i] === 0) transparentCount++;
+                                        }
+                                        console.log('First frame processed and drawn to canvas');
+                                        console.log('  - Transparent pixels in first frame:', transparentCount);
+                                        
+                                        if (transparentCount === 0) {
+                                            console.warn('WARNING: First frame has no transparent pixels - background removal may not be working!');
+                                        }
+                                    } else {
+                                        console.error('Processing function not available for first frame!');
+                                        alert('Background removal function not available. Please refresh the page and try again.');
+                                        btn.disabled = false;
+                                        btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                        isRecording = false;
+                                        return;
+                                    }
+                                    
+                                    // Now start video playback
+                                    startFrameProcessing();
+                                } else {
+                                    setTimeout(waitForFirstFrame, 50);
+                                }
+                            };
+                            
+                            const startFrameProcessing = () => {
+                                // Use continuous update loop to process and draw frames to canvas
+                                // Update at ~30 FPS to match video playback
+                                const frameInterval = 33; // ~30 FPS (33ms per frame)
+                                let frameCount = 0;
+                            
+                            // Continuous frame processing loop
+                            processInterval = setInterval(() => {
+                                if (!isRecording || mediaRecorder.state !== 'recording') {
+                                    if (processInterval) {
+                                        clearInterval(processInterval);
+                                        processInterval = null;
+                                    }
+                                    return;
+                                }
+                                
+                                // Check if video has ended
+                                if (video.ended || video.currentTime >= videoDuration - 0.05) {
+                                    console.log('Video processing complete. Finalizing recording...');
+                                    
+                                    // Process final frame
+                                    if (video.readyState >= 2) {
+                                        try {
+                                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                            ctx.drawImage(video, 0, 0);
+                                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                            const processFunc = window.removeBackgroundFromFrame || (typeof removeBackgroundFromFrame !== 'undefined' ? removeBackgroundFromFrame : null);
+                                            if (typeof processFunc === 'function') {
+                                                const processed = processFunc(imageData);
+                                                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                                ctx.putImageData(processed, 0, 0);
+                                                console.log('Final frame processed with background removal');
+                                            } else {
+                                                console.error('Processing function not available for final frame!');
+                                            }
+                                        } catch (err) {
+                                            console.error('Error processing final frame:', err);
+                                        }
+                                    }
+                                
+                                    if (processInterval) {
+                                        clearInterval(processInterval);
+                                        processInterval = null;
+                                    }
+                                    
+                                    // Stop video and finalize recording
+                                    video.pause();
+                                    
+                                    // Request final data and stop
+                                    setTimeout(() => {
+                                        if (mediaRecorder.state === 'recording') {
+                                            console.log('Requesting final data and stopping MediaRecorder...');
+                                            try {
+                                                mediaRecorder.requestData();
+                                            } catch(e) {
+                                                console.warn('Could not request final data:', e);
+                                            }
+                                    setTimeout(() => {
+                                        if (mediaRecorder.state === 'recording') {
+                                            mediaRecorder.stop();
+                                        }
+                                            }, 300);
+                                }
+                                    }, 500);
+                                    return;
+                                }
+                                
+                                // Process current frame if video is ready and playing
+                                if (video.readyState >= 2 && !video.paused) {
+                                    try {
+                                        // Clear canvas completely (including alpha channel)
+                                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                        
+                                        // Draw current video frame
+                                        ctx.drawImage(video, 0, 0);
+                                        
+                                        // Get image data and process it
+                                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                        
+                                        // Get processing function
+                                        const processFunc = window.removeBackgroundFromFrame || (typeof removeBackgroundFromFrame !== 'undefined' ? removeBackgroundFromFrame : null);
+                                        
+                                        if (typeof processFunc === 'function') {
+                                            // Process the frame to remove background
+                                            const processed = processFunc(imageData);
+                                            
+                                            // Verify processed frame has transparency (alpha channel)
+                                            const processedData = processed.data;
+                                            let transparentPixels = 0;
+                                            let opaquePixels = 0;
+                                            for (let i = 3; i < processedData.length; i += 4) {
+                                                if (processedData[i] === 0) {
+                                                    transparentPixels++;
+                                                } else if (processedData[i] === 255) {
+                                                    opaquePixels++;
+                                                }
+                                            }
+                                            
+                                            // Clear canvas again to ensure transparency
+                                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                            
+                                            // Put processed frame with alpha channel preserved
+                                            ctx.putImageData(processed, 0, 0);
+                                            
+                                            frameCount++;
+                                            if (frameCount % 30 === 0) { // Log every second
+                                                console.log('Processed', frameCount, 'frames at', video.currentTime.toFixed(2), 's');
+                                                console.log('  - Transparent pixels:', transparentPixels, 'Opaque pixels:', opaquePixels);
+                                            }
+                                        } else {
+                                            console.error('Processing function not available during download at frame', frameCount);
+                                            // Still draw the frame even if processing fails (fallback)
+                                            // But this means background won't be removed
+                                            console.warn('WARNING: Background removal not applied - using original frame');
+                                        }
+                                    } catch (err) {
+                                        console.error('Error processing frame at', video.currentTime.toFixed(2), 's:', err);
+                                        // Continue processing even if one frame fails
+                                    }
+                                }
+                            }, frameInterval);
+                            
+                            // Start video playback - this is critical for MediaRecorder to capture frames
+                            video.play().then(() => {
+                                console.log('Video playback started. Recording frames...');
+                            }).catch(err => {
+                                console.error('Video play error:', err);
+                                alert('Failed to play video. Please try again.');
+                                if (mediaRecorder.state === 'recording') {
+                                    mediaRecorder.stop();
+                                }
+                                if (processInterval) {
+                                    clearInterval(processInterval);
+                                    processInterval = null;
+                                }
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                                isRecording = false;
+                            });
+                            
+                            // Stop recording when video ends
+                            video.addEventListener('ended', function onVideoEnded() {
+                                video.removeEventListener('ended', onVideoEnded);
+                                console.log('Video playback ended. Finalizing recording...');
+                                
+                                // Process final frame
+                                if (video.readyState >= 2) {
+                                    try {
+                                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                        ctx.drawImage(video, 0, 0);
+                                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                        const processFunc = window.removeBackgroundFromFrame || (typeof removeBackgroundFromFrame !== 'undefined' ? removeBackgroundFromFrame : null);
+                                        if (typeof processFunc === 'function') {
+                                            const processed = processFunc(imageData);
+                                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                            ctx.putImageData(processed, 0, 0);
+                                            console.log('Final frame processed with background removal');
+                                        } else {
+                                            console.error('Processing function not available for final frame!');
+                                        }
+                                    } catch (err) {
+                                        console.error('Error processing final frame:', err);
+                                    }
+                                }
+                                
+                                if (processInterval) {
+                                    clearInterval(processInterval);
+                                    processInterval = null;
+                                }
+                                
+                                // Request final data and stop recording
+                                setTimeout(() => {
+                                    if (mediaRecorder.state === 'recording') {
+                                        console.log('Video ended. Requesting final data and stopping MediaRecorder...');
+                                        try {
+                                            mediaRecorder.requestData();
+                                        } catch(e) {
+                                            console.warn('Could not request final data:', e);
+                                        }
+                                        setTimeout(() => {
+                                            if (mediaRecorder.state === 'recording') {
+                                                mediaRecorder.stop();
+                                            }
+                                        }, 300);
+                                    }
+                                }, 500);
+                            }, { once: true });
+                            
+                            // Safety timeout to stop recording if video doesn't end properly
+                            setTimeout(() => {
+                                if (mediaRecorder.state === 'recording') {
+                                    console.warn('Safety timeout reached. Stopping recording...');
+                                    video.pause();
+                                    if (processInterval) {
+                                        clearInterval(processInterval);
+                                        processInterval = null;
+                                    }
+                                    try {
+                                        mediaRecorder.requestData();
+                                    } catch(e) {}
+                                    setTimeout(() => {
+                                        if (mediaRecorder.state === 'recording') {
+                                    mediaRecorder.stop();
+                                }
+                                    }, 300);
+                                }
+                            }, (videoDuration * 1000) + 2000); // Add 2 seconds buffer
+                            
+                            console.log('Frame processing loop started. Video will play and record at', fps, 'FPS...');
+                            
+                            // Safety timeout to stop recording if something goes wrong
+                            setTimeout(() => {
+                                if (mediaRecorder.state === 'recording') {
+                                    console.warn('Safety timeout reached. Stopping recording...');
+                                    if (processInterval) {
+                                        clearInterval(processInterval);
+                                        processInterval = null;
+                                    }
+                                    mediaRecorder.stop();
+                                }
+                            }, (videoDuration * 1000) + 5000); // Add 5 seconds buffer
+                        };
+                        
+                        startRecording();
+                        
+                    } catch (err) {
+                        console.error('Error starting video processing:', err);
+                        alert('Error starting video processing: ' + err.message);
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                        isRecording = false;
+                    }
+            };
+            
+            // Download button handler - ensure it's attached properly
+            function attachDownloadHandler() {
+                const downloadBtn = document.getElementById('downloadBtn');
+                if (!downloadBtn) {
+                    setTimeout(attachDownloadHandler, 100);
+                    return;
+                }
+                
+                // Remove existing handlers by cloning
+                const newBtn = downloadBtn.cloneNode(true);
+                downloadBtn.parentNode.replaceChild(newBtn, downloadBtn);
+                newBtn.id = 'downloadBtn';
+                
+                // Attach both inline and event listener
+                newBtn.onclick = window.handleDownloadButtonClick;
+                newBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.handleDownloadButtonClick();
+                });
+                
+                console.log('✓ Download button handler attached');
+            }
+            
+            // Attach download handler
+            attachDownloadHandler();
+            setTimeout(attachDownloadHandler, 200);
+            setTimeout(attachDownloadHandler, 500);
+        });
+    </script>
+</body>
+</html>
+
